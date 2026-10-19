@@ -25,3 +25,22 @@ In this bootstrap, an audited entry must be one unique `static` method with prim
 ## Safety, security, and reproducibility
 
 Hard-RT admission is **target-bound** to a VM build, AOT toolchain, RTOS, CPU, scheduling configuration, and certified library set. No proprietary SDK, license, CI credentials or source mirroring is required by the portable tests. A production certificate requires backend inspection, transitive effects and memory-region proof, platform-specific WCET/response-time analysis, and on-target stress validation. See `docs/real-time-contract.md` and `docs/qualification.md`.
+
+## v2 audit hardening
+
+The portable bytecode auditor now uses a strict opcode allowlist, classfile 52.0
+pinning, exact attribute decoding, forward-only CFG boundary validation,
+transitive static call counting, and SHA-256 evidence binding. It fails closed
+on hidden class initializers, fields, unusual class inheritance, malformed
+bytecode, and integer division/remainder (exceptional allocation path).
+
+The optional `--max-bytecodes N` and `--max-call-depth N` flags reject code
+that exceeds explicitly provided source-independent syntactic budgets. The
+reported instruction bound is **not** time, WCET or an RTSJ heap-independence
+certificate.
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 tools/rt_bytecode_audit.py /path/Example.class --entry tick \
+  --max-bytecodes 1000 --max-call-depth 16
+```
