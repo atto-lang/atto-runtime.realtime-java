@@ -25,6 +25,26 @@ class TestBytecodeAdmission(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, message):
             audit(self.compile(source), 'tick')
 
+    def test_constructor_opcode_mutation_rejected(self):
+        data = bytearray(self.compile('public static int tick() { return 1; }'))
+        sites = [i for i in range(len(data) - 4)
+                 if data[i] == 0x2a and data[i + 1] == 0xb7 and data[i + 4] == 0xb1]
+        self.assertEqual(len(sites), 1, 'expected unique javac Object constructor')
+        data[sites[0]] = 0x00
+        with self.assertRaisesRegex(AuditError, 'constructor'):
+            audit(bytes(data), 'tick')
+
+    def test_constructor_with_side_effect_rejected(self):
+        self.rejected(
+            'public Example() { System.setProperty("key", "value"); } '
+            'public static int tick() { return 1; }',
+            'constructor')
+
+    def test_unqualified_constructor_overload_rejected(self):
+        self.rejected(
+            'public Example(int n) { } public static int tick() { return 1; }',
+            'constructor')
+
     def test_pure_primitive(self):
         self.accepted('public static int tick(int x) { return x * 3 + 1; }')
 

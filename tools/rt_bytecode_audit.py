@@ -280,6 +280,29 @@ def inspect_code(code, cp, val, method_desc, max_locals):
 
 def audit(data, entry):
     owner, cp, methods, val = read_class(data)
+
+    # Class initialization executes before any admitted static entrypoint.
+    # Generated Java 8 classes must have exactly one inert Object constructor.
+    constructors = [(key, details) for key, details in methods.items() if key[0] == '<init>']
+    if len(constructors) != 1:
+        raise AuditError('expected exactly one qualified Object constructor')
+    (ctor_name, ctor_desc), (ctor_flags, ctor_code) = constructors[0]
+    if ctor_desc != '()V' or ctor_code is None or ctor_flags & (
+            ACC_STATIC | ACC_NATIVE | ACC_SYNCHRONIZED | ACC_ABSTRACT):
+        raise AuditError('unqualified constructor signature or flags')
+    code, max_stack, max_locals = ctor_code
+    if (len(code) != 5 or code[0] != 0x2a or code[1] != 0xb7
+            or code[4] != 0xb1 or max_stack < 1 or max_locals < 1):
+        raise AuditError('constructor contains unqualified bytecode')
+    method_index = (code[2] << 8) | code[3]
+    methodref = val(method_index, 10)
+    ref_owner = val(val(methodref[1], 7)[1], 1)[1]
+    name_type = val(methodref[2], 12)
+    ref_name = val(name_type[1], 1)[1]
+    ref_desc = val(name_type[2], 1)[1]
+    if (ref_owner != 'java/lang/Object' or ref_name != '<init>'
+            or ref_desc != '()V'):
+        raise AuditError('constructor does not exclusively call Object.<init>()V')
     roots = [key for key in methods if key[0] == entry]
     if len(roots) != 1:
         raise AuditError(f'entry {entry} must resolve to exactly one method (found {len(roots)})')
