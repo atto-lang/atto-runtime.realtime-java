@@ -132,7 +132,7 @@ class TestAdversarialClassfile(unittest.TestCase):
     def test_extra_classfile_bytes_are_rejected_not_ignored(self):
         valid = self.compile('public static int tick(int x) { return x; }')
         self.assertEqual(audit(valid, 'tick')['assurance'], 'syntactic-only')
-        for suffix in (b'\\0', b'garbage', b'\\0' * 100):
+        for suffix in (b'\x00', b'garbage', b'\x00' * 100):
             with self.subTest(suffix=suffix), self.assertRaisesRegex(
                     AuditError, 'trailing bytes'):
                 audit(valid + suffix, 'tick')
