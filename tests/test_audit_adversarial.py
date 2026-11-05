@@ -129,6 +129,41 @@ class TestAdversarialClassfile(unittest.TestCase):
                 except AuditError:
                     pass
 
+    def test_extra_classfile_bytes_are_rejected_not_ignored(self):
+        valid = self.compile('public static int tick(int x) { return x; }')
+        self.assertEqual(audit(valid, 'tick')['assurance'], 'syntactic-only')
+        for suffix in (b'\\0', b'garbage', b'\\0' * 100):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(
+                    AuditError, 'trailing bytes'):
+                audit(valid + suffix, 'tick')
+
+    def test_magic_and_minor_version_mutations_fail_closed(self):
+        valid = self.compile('public static int tick(int x) { return x; }')
+        invalid_magic = bytearray(valid)
+        invalid_magic[0] ^= 0xff
+        with self.assertRaisesRegex(AuditError, 'not a class file'):
+            audit(bytes(invalid_magic), 'tick')
+        nonzero_minor = bytearray(valid)
+        nonzero_minor[5] = 1
+        with self.assertRaisesRegex(AuditError, 'unsupported class-file version'):
+            audit(bytes(nonzero_minor), 'tick')
+
+    def test_overloaded_entry_cannot_silently_select_a_signature(self):
+        valid = self.compile(
+            'public static int tick(int x) { return x; } '
+            'public static long tick(long x) { return x; }'
+        )
+        with self.assertRaisesRegex(AuditError, 'exactly one method'):
+            audit(valid, 'tick')
+
+    def test_class_initializer_is_not_ignored_during_entry_admission(self):
+        valid = self.compile(
+            'static { long timestamp = System.nanoTime(); } '
+            'public static int tick(int x) { return x; }'
+        )
+        with self.assertRaisesRegex(AuditError, 'class initializer'):
+            audit(valid, 'tick')
+
 
 if __name__ == '__main__':
     unittest.main()
