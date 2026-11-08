@@ -28,3 +28,15 @@ This README describes the repository's intended responsibilities. Feature suppor
 - [Language specification](https://github.com/atto-lang/atto-spec)
 - [Platform conformance](https://github.com/atto-lang/atto-platform-conformance)
 - [Commercial infrastructure](https://github.com/atto-co)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** Latency-optimized Java actor scheduler, deterministic queues, native/offheap arena research and benchmark characterization.
+
+**Belongs elsewhere:** Full Java compiler frontend and GraalVM AOT implementation live in atto-source.java; common actor semantics in atto-spec.
+
+**Security and portability boundary:** State explicitly which results are host-only benchmarks versus compiled AttoLang guest execution; constrain pause times, starvation, admission and actor isolation.
+
+AttoLang is the public name; preserve existing Oreslang/.ores compatibility and use canonical .atto for new portable library source. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
