@@ -1,7 +1,7 @@
 name: Rust protocol/reference oracle
 on:
   push:
-    branches: [main, feat/atto-nats-core-jetstream-foundation]
+    branches: [main, feat/atto-nats-core-jetstream-foundation, ci/atto-nats-guest-gate-20261111]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -12,6 +12,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Verify exact source tree behind CI-only trigger overlay
+        run: |
+          test "$(git rev-parse 'HEAD^1^{tree}')" = "ef55c9d2c83521a265f1c55921771e43c07457c1"
+          test "$(git diff --name-only HEAD^1 HEAD)" = ".github/workflows/reference-oracle.yml"
+          echo "SOURCE_GIT_TREE_VERIFIED=ef55c9d2c83521a265f1c55921771e43c07457c1"
+          echo "SOURCE_HEAD=6b619f96eb44841cdf3e41adf6f50954a155467f"
+          echo "EXECUTED_TREE_CONTAINS_ONLY_CI_TRIGGER_OVERLAY=true"
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo formatting (Rust-only tools)
         run: |
