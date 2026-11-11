@@ -1,0 +1,29 @@
+// Source-level target acceptance fixture. Requires a real compiler/runtime.
+// The marker proves the guest main path ran, but does NOT prove asynchronous
+// actor delivery completed: add a supervised reply/join test for that gate.
+define actor AcceptanceCounter as
+  state {
+    let int count = 0;
+  }
+
+  critical increment(): void {
+    self.handle_state(|mut s| -> {
+      s.count = s.count + 1;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.increment();
+    fi
+    return;
+  }
+end
+
+pub fnc main(): int {
+  val actor = spawn AcceptanceCounter();
+  actor.send(1);
+  stdio.println("ATTO_GUEST_EXECUTED:state-critical");
+  return 0;
+}

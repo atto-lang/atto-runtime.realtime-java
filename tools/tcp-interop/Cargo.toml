@@ -1,0 +1,15 @@
+[package]
+name = "atto-nats-tcp-interop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Real TCP NATS client protocol probe (not a server)"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "atto-nats-tcp-interop"
+path = "src/main.rs"
+
+[dependencies]

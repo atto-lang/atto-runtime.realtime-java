@@ -1,0 +1,14 @@
+// Retention rules are separate from consumer ACK tracking.
+// A message may be removed only when the selected retention policy allows.
+define enum RetentionPolicy as
+  Limits
+  Interest
+  WorkQueue
+end
+
+pub fnc limits_reached(int messages, int max_messages): bool {
+  if max_messages < 0 then
+    return false;
+  fi
+  return messages >= max_messages;
+}

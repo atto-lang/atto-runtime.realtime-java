@@ -1,0 +1,17 @@
+// EXPECT COMPILE ERROR: direct mutable state access outside critical.
+define actor UnsafeCounter as
+  state {
+    let int count = 0;
+  }
+
+  pub mtd (UnsafeCounter self) mutate_outside_critical(): void {
+    self.handle_state(|mut s| -> {
+      s.count = 17;
+    });
+    return;
+  }
+end
+
+pub fnc main(): int {
+  return 0;
+}

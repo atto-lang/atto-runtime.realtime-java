@@ -1,0 +1,155 @@
+// AttoNATS connection state owner. Raw TCP byte-I/O is a primitive host
+// capability (tools/byte-transport); only Atto may parse NATS and route.
+// This is a guarded state transition substrate, NOT a live socket session.
+// Reader/writer tasks must not borrow state across await boundaries.
+define actor ConnectionActor as
+  state {
+    // 0=awaiting CONNECT; 1=authenticated; 2=closed.
+    let int phase = 0;
+    let int received_commands = 0;
+    let int active_subscriptions = 0;
+    let int queued_output_bytes = 0;
+    let bool pending_publish = false;
+    let int pending_payload_bytes = 0;
+    let int max_payload_bytes = 1048576;
+    let int max_subscriptions = 2048;
+    let int max_outbound_bytes = 1048576;
+    let int generation = 1;
+  }
+
+  // Caller must verify the parsed CONNECT credentials/permissions BEFORE
+  // entering this critical method. A valid transport socket != auth.
+  critical mark_authenticated(): bool {
+    let bool changed = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 0 then
+        s.phase = 1;
+        changed = true;
+      fi
+    });
+    return changed;
+  }
+
+  critical admit_command(): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 then
+        s.received_commands = s.received_commands + 1;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical subscribe(): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and s.active_subscriptions < s.max_subscriptions then
+        s.active_subscriptions = s.active_subscriptions + 1;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical unsubscribe(): void {
+    self.handle_state(|mut s| -> {
+      if s.active_subscriptions > 0 then
+        s.active_subscriptions = s.active_subscriptions - 1;
+      fi
+    });
+    return;
+  }
+
+  // The parser must consume the complete NATS wire header and validate
+  // subject/ACL/reply/length before calling this transition. Body bytes
+  // remain opaque and are never converted to a String.
+  critical begin_publish(int payload_bytes, int expected_generation): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and !s.pending_publish and
+         expected_generation == s.generation and
+         payload_bytes >= 0 and payload_bytes <= s.max_payload_bytes then
+        s.pending_publish = true;
+        s.pending_payload_bytes = payload_bytes;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  // Commit only the exact body size in the SAME actor incarnation. A
+  // fragmented or malformed body must not partially route any message.
+  critical finish_publish(int received_bytes, int expected_generation): bool {
+    let bool committed = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and s.pending_publish and
+         expected_generation == s.generation and
+         received_bytes == s.pending_payload_bytes then
+        s.pending_publish = false;
+        s.pending_payload_bytes = 0;
+        committed = true;
+      fi
+    });
+    return committed;
+  }
+
+  critical abort_publish(int expected_generation): bool {
+    let bool aborted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and s.pending_publish and
+         expected_generation == s.generation then
+        s.pending_publish = false;
+        s.pending_payload_bytes = 0;
+        aborted = true;
+      fi
+    });
+    return aborted;
+  }
+
+  critical reserve_output(int requested_bytes): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and requested_bytes >= 0 and
+         requested_bytes <= s.max_outbound_bytes - s.queued_output_bytes then
+        s.queued_output_bytes = s.queued_output_bytes + requested_bytes;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical complete_output(int sent_bytes, int observed_generation): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.phase == 1 and observed_generation == s.generation and
+         sent_bytes >= 0 and sent_bytes <= s.queued_output_bytes then
+        s.queued_output_bytes = s.queued_output_bytes - sent_bytes;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical close_session(): void {
+    self.handle_state(|mut s| -> {
+      if s.phase != 2 then
+        s.phase = 2;
+        s.generation = s.generation + 1;
+        s.active_subscriptions = 0;
+        s.queued_output_bytes = 0;
+        s.pending_publish = false;
+        s.pending_payload_bytes = 0;
+      fi
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == -1 then
+      self.close_session();
+    fi
+    // Real byte/ADT mailbox ingress must replace this integer-only scaffold.
+    return;
+  }
+end

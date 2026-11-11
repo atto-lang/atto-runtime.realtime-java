@@ -1,0 +1,48 @@
+// AttoNATS application entrypoint — target AttoLang state/critical surface.
+// Pending real compiler execution and a native TCP accept capability.
+define actor BrokerSupervisor as
+  state {
+    let int accepted_connections = 0;
+    let int rejected_connections = 0;
+    let bool shutting_down = false;
+  }
+
+  critical record_accept(): void {
+    self.handle_state(|mut s| -> {
+      s.accepted_connections = s.accepted_connections + 1;
+    });
+    return;
+  }
+
+  critical record_rejection(): void {
+    self.handle_state(|mut s| -> {
+      s.rejected_connections = s.rejected_connections + 1;
+    });
+    return;
+  }
+
+  critical seal(): void {
+    self.handle_state(|mut s| -> {
+      s.shutting_down = true;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.record_accept();
+    elif mail.value == 2 then
+      self.record_rejection();
+    elif mail.value == 3 then
+      self.seal();
+    fi
+    return;
+  }
+end
+
+pub fnc main(): int {
+  val broker = spawn BrokerSupervisor();
+  broker.send(1);
+  // Listener and protocol integration must replace this self-contained smoke.
+  return 0;
+}

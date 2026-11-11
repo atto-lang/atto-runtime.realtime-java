@@ -1,0 +1,41 @@
+// Shard-local subject router. Do not share its mutable subscription index
+// across actors; use bounded mailbox requests with immutable message envelopes.
+define actor SubjectRouterActor as
+  state {
+    let int subscription_count = 0;
+    let int routed_messages = 0;
+    let int generation = 1;
+  }
+
+  critical add_subscription(): void {
+    self.handle_state(|mut s| -> {
+      s.subscription_count = s.subscription_count + 1;
+    });
+    return;
+  }
+
+  critical record_route(): void {
+    self.handle_state(|mut s| -> {
+      s.routed_messages = s.routed_messages + 1;
+    });
+    return;
+  }
+
+  critical bump_generation(): void {
+    self.handle_state(|mut s| -> {
+      s.generation = s.generation + 1;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.add_subscription();
+    elif mail.value == 2 then
+      self.record_route();
+    elif mail.value == 3 then
+      self.bump_generation();
+    fi
+    return;
+  }
+end

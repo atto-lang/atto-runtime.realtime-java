@@ -1,0 +1,58 @@
+// Queue-group selection is actor-owned; no shared global round-robin cursor.
+// Eligibility must be computed from live subscriptions matching the subject.
+// The Rust RouterModel tests exact matching and unsubscribe/rebalance behavior.
+// This is bounded selection state only, not a live subject/trie routing engine.
+define actor QueueGroupActor as
+  state {
+    let int member_count = 0;
+    let int next_choice = 0;
+    let int generation = 1;
+  }
+
+  critical add_member(): void {
+    self.handle_state(|mut s| -> {
+      if s.member_count < 10000 then
+        s.member_count = s.member_count + 1;
+        s.generation = s.generation + 1;
+      fi
+    });
+    return;
+  }
+
+  critical remove_member(): void {
+    self.handle_state(|mut s| -> {
+      if s.member_count > 0 then
+        s.member_count = s.member_count - 1;
+        if s.member_count == 0 then
+          s.next_choice = 0;
+        elif s.next_choice >= s.member_count then
+          s.next_choice = 0;
+        fi
+        s.generation = s.generation + 1;
+      fi
+    });
+    return;
+  }
+
+  critical select_next(): int {
+    let int choice = -1;
+    self.handle_state(|mut s| -> {
+      if s.member_count > 0 then
+        choice = s.next_choice;
+        s.next_choice = (s.next_choice + 1) % s.member_count;
+      fi
+    });
+    return choice;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.add_member();
+    elif mail.value == -1 then
+      self.remove_member();
+    elif mail.value == 2 then
+      self.select_next();
+    fi
+    return;
+  }
+end

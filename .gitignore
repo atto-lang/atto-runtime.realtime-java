@@ -1,0 +1,9 @@
+data/
+target/
+**/target/
+*.log
+*.tmp
+*.pid
+.DS_Store
+dist/
+build/

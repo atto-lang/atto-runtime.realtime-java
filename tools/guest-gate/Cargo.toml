@@ -1,0 +1,15 @@
+[package]
+name = "atto-guest-gate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Fail-closed executable Atto guest-admission gate"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "atto-guest-gate"
+path = "src/main.rs"
+
+[dependencies]

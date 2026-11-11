@@ -1,0 +1,18 @@
+// NATS binary frame semantics. The independent Rust oracle exercises
+// partial TCP frames, CRLF and size budgets until raw byte-I/O is wired into
+// this source module. Never parse NATS message bodies as UTF-8.
+pub fnc command_is_ping(String line): bool {
+  return line == "PING";
+}
+pub fnc command_is_pong(String line): bool {
+  return line == "PONG";
+}
+pub fnc command_is_connect(String line): bool {
+  return line.starts_with("CONNECT ");
+}
+pub fnc command_is_pub(String line): bool {
+  return line.starts_with("PUB ");
+}
+pub fnc command_is_hpub(String line): bool {
+  return line.starts_with("HPUB ");
+}

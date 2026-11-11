@@ -1,0 +1,8 @@
+// JetStream API requests must be handled as real NATS request/reply subjects.
+// This module intentionally does not claim full API implementation.
+pub fnc is_jetstream_api_subject(String subject): bool {
+  return subject.starts_with("$JS.API.");
+}
+pub fnc is_stream_create_subject(String subject): bool {
+  return subject.starts_with("$JS.API.STREAM.CREATE.");
+}

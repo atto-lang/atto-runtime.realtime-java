@@ -1,0 +1,6 @@
+// Stable hash-based placement requires a versioned map and controlled migration.
+// This file reserves the AttoLang algorithm entrypoint; verified deterministic
+// reference fixtures live in the Rust oracle.
+pub fnc valid_partition_count(int count): bool {
+  return count >= 1 and count <= 4096;
+}

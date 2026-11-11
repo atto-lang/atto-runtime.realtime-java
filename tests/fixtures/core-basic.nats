@@ -1,0 +1,8 @@
+# Pseudo-fixture for the real NATS TCP adapter: not an executable script.
+# SERVER => INFO { ... }\r\n
+# CLIENT => CONNECT {"verbose":false,"pedantic":false}\r\n
+# CLIENT => PING\r\n
+# SERVER => PONG\r\n
+# CLIENT => SUB events.created 1\r\n
+# CLIENT => PUB events.created 5\r\nhello\r\n
+# SERVER => MSG events.created 1 5\r\nhello\r\n

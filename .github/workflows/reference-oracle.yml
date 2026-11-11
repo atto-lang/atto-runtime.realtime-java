@@ -1,0 +1,40 @@
+name: Rust protocol/reference oracle
+on:
+  push:
+    branches: [main, feat/atto-nats-core-jetstream-foundation]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reference-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo formatting (Rust-only tools)
+        run: |
+          cargo fmt --manifest-path tools/reference/Cargo.toml --all -- --check
+          cargo fmt --manifest-path tools/guest-gate/Cargo.toml --all -- --check
+          cargo fmt --manifest-path tools/tcp-interop/Cargo.toml --all -- --check
+          cargo fmt --manifest-path tools/byte-transport/Cargo.toml --all -- --check
+      - name: Executed Rust unit/specification/transport tests
+        run: |
+          cargo test --manifest-path tools/reference/Cargo.toml --all-targets --locked --verbose
+          cargo test --manifest-path tools/guest-gate/Cargo.toml --all-targets --locked --verbose
+          cargo test --manifest-path tools/tcp-interop/Cargo.toml --all-targets --locked --verbose
+          cargo test --manifest-path tools/byte-transport/Cargo.toml --all-targets --locked --verbose
+      - name: Strict Clippy (Rust-only tools)
+        run: |
+          cargo clippy --manifest-path tools/reference/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path tools/guest-gate/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path tools/tcp-interop/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path tools/byte-transport/Cargo.toml --all-targets --locked -- -D warnings
+      - name: State evidence scope precisely
+        run: |
+          echo "EVIDENCE_SCOPE=RUST_REFERENCE_GUEST_GATE_TCP_CLIENT_AND_BYTE_HOST_FIXTURES_ONLY"
+          echo "ATTO_COMPILER_EXECUTED=false"
+          echo "ATTO_GUEST_EXECUTED=false"
+          echo "REAL_ATTO_TCP_BROKER_VERIFIED=false"
+          echo "SOURCE_SHA=$GITHUB_SHA"

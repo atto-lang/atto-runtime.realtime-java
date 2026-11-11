@@ -1,0 +1,60 @@
+// Stream writes are TWO PHASES: reserve under a critical state loan, release,
+// await WAL/replication, and commit under another critical loan after epoch check.
+// The RPC/persistence transaction coordinator and write queue are TODO.
+define actor StreamActor as
+  state {
+    let int next_sequence = 1;
+    let int committed_sequence = 0;
+    let int pending_count = 0;
+    let int leader_term = 1;
+    let bool writable = true;
+  }
+
+  critical reserve_append(): int {
+    let int reserved = 0;
+    self.handle_state(|mut s| -> {
+      // Admit only one uncommitted append until ordered WAL coordination exists.
+      if s.writable and s.pending_count == 0 then
+        reserved = s.next_sequence;
+        s.next_sequence = s.next_sequence + 1;
+        s.pending_count = s.pending_count + 1;
+      fi
+    });
+    return reserved;
+  }
+
+  critical commit_append(int seq, int term): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.writable and term == s.leader_term and s.pending_count == 1 and seq == s.committed_sequence + 1 then
+        s.committed_sequence = seq;
+        s.pending_count = s.pending_count - 1;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical abort_inflight(): void {
+    // Never reuse an uncertain sequence; recovery must reconcile the WAL.
+    self.handle_state(|mut s| -> {
+      s.writable = false;
+    });
+    return;
+  }
+
+  critical fence_leader(): void {
+    self.handle_state(|mut s| -> {
+      s.leader_term = s.leader_term + 1;
+      s.writable = false;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == -1 then
+      self.fence_leader();
+    fi
+    return;
+  }
+end

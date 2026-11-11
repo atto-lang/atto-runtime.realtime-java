@@ -1,0 +1,30 @@
+[package]
+name = "atto-nats-byte-transport"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Minimal NATS-agnostic TCP-to-guest-stdio byte transport, not a broker"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "atto-nats-byte-transport"
+path = "src/main.rs"
+
+[[bin]]
+name = "echo_fixture"
+path = "src/bin/echo_fixture.rs"
+
+[dependencies]
+
+[features]
+live-atto-guest = []
+
+[dev-dependencies]
+atto-nats-tcp-interop = { path = "../tcp-interop" }
+
+[[test]]
+name = "live_atto_guest"
+path = "tests/live_atto_guest.rs"
+required-features = ["live-atto-guest"]

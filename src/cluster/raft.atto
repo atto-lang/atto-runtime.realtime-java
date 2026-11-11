@@ -1,0 +1,41 @@
+// Raft state owner. No network I/O or disk writes under critical sections.
+// This is a skeleton; election quorum, snapshot and log consistency are TODO.
+define actor RaftGroupActor as
+  state {
+    let int current_term = 0;
+    let int commit_index = 0;
+    let int voted_for_node = -1;
+    let bool leader = false;
+  }
+
+  critical observe_higher_term(int term): void {
+    self.handle_state(|mut s| -> {
+      if term > s.current_term then
+        s.current_term = term;
+        s.voted_for_node = -1;
+        s.leader = false;
+      fi
+    });
+    return;
+  }
+
+  critical commit_if_leader(int term, int index): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if s.leader and term == s.current_term and index > s.commit_index then
+        // The caller MUST have a verified quorum commit certificate.
+        // This method alone does not establish a replicated commit.
+        s.commit_index = index;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value > 0 then
+      self.observe_higher_term(mail.value);
+    fi
+    return;
+  }
+end

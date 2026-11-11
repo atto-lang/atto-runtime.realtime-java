@@ -1,0 +1,61 @@
+// AttoNATS durable-consumer state machine foundation.
+//
+// SAFETY: fail closed with a single outstanding delivery until the real
+// sparse ACK-set + durable checkpoint algorithm is implemented. A future,
+// duplicated, stale-generation or wrong-sequence ACK must not advance the
+// durable floor. A consumer must not bypass this via an ordinary actor field.
+//
+// Async delivery, timeout/retry, disk persistence and actor mailbox admission
+// are not yet wired. Rust broker_model::AckLedger proves the target multi-flight
+// state-machine behavior separately; it does NOT make this actor guest-verified.
+define actor ConsumerActor as
+  state {
+    let int next_delivery_sequence = 1;
+    let int ack_floor = 0;
+    let int pending_sequence = 0;
+    let int generation = 1;
+  }
+
+  critical reserve_delivery(): int {
+    let int reserved = 0;
+    self.handle_state(|mut s| -> {
+      if s.pending_sequence == 0 then
+        reserved = s.next_delivery_sequence;
+        s.next_delivery_sequence = s.next_delivery_sequence + 1;
+        s.pending_sequence = reserved;
+      fi
+    });
+    return reserved;
+  }
+
+  critical acknowledge(int sequence, int observed_generation): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if observed_generation == s.generation and
+         s.pending_sequence > 0 and sequence == s.pending_sequence then
+        s.ack_floor = sequence;
+        s.pending_sequence = 0;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical fence_generation(): void {
+    // Do not erase the pending delivery: after restart it must be replayed
+    // from durable consumer state with a fresh generation.
+    self.handle_state(|mut s| -> {
+      s.generation = s.generation + 1;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.reserve_delivery();
+    elif mail.value == -1 then
+      self.fence_generation();
+    fi
+    return;
+  }
+end

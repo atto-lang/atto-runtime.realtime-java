@@ -1,0 +1,53 @@
+// Target AttoLang TCP listener actor. Raw TCP listen/accept/read_bytes/
+// write_bytes are a required upstream host-capability adapter; do not claim
+// they are implemented or substitute the Rust protocol test harness.
+//
+// All transitions are short non-suspending critical methods; no carrier
+// blocking and no mutable actor state loan survives an await boundary.
+define actor NatsListenerActor as
+  state {
+    let int admitted_sessions = 0;
+    let int max_sessions = 1024;
+    let int generation = 1;
+    let bool closed = false;
+  }
+
+  critical reserve_session(): bool {
+    let bool admitted = false;
+    self.handle_state(|mut s| -> {
+      if !s.closed and s.admitted_sessions < s.max_sessions then
+        s.admitted_sessions = s.admitted_sessions + 1;
+        admitted = true;
+      fi
+    });
+    return admitted;
+  }
+
+  critical release_session(): void {
+    self.handle_state(|mut s| -> {
+      if s.admitted_sessions > 0 then
+        s.admitted_sessions = s.admitted_sessions - 1;
+      fi
+    });
+    return;
+  }
+
+  critical stop_listener(): void {
+    self.handle_state(|mut s| -> {
+      s.closed = true;
+      s.generation = s.generation + 1;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.reserve_session();
+    elif mail.value == 2 then
+      self.release_session();
+    elif mail.value == 3 then
+      self.stop_listener();
+    fi
+    return;
+  }
+end

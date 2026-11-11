@@ -1,0 +1,11 @@
+[package]
+name = "atto-nats-reference"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Independent NATS wire/subject/WAL reference oracle, not a broker server"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]

@@ -1,0 +1,7 @@
+# Declarative example ONLY, not an implemented executable cluster config.
+[cluster]
+enabled = true
+replicas = 3
+nodes = ["n1:6222", "n2:6222", "n3:6222"]
+quorum = 2
+placement_epoch = 1

@@ -1,0 +1,38 @@
+// Admission accounting is separate from actual network/kernel resource
+// limits. Use fail-closed quotas and release exactly once on teardown.
+define actor QuotaActor as
+  state {
+    let int active_connections = 0;
+    let int connection_limit = 1024;
+    let int generation = 1;
+  }
+
+  critical try_acquire(): bool {
+    let bool ok = false;
+    self.handle_state(|mut s| -> {
+      if s.active_connections < s.connection_limit then
+        s.active_connections = s.active_connections + 1;
+        ok = true;
+      fi
+    });
+    return ok;
+  }
+
+  critical release_connection(): void {
+    self.handle_state(|mut s| -> {
+      if s.active_connections > 0 then
+        s.active_connections = s.active_connections - 1;
+      fi
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.try_acquire();
+    elif mail.value == 2 then
+      self.release_connection();
+    fi
+    return;
+  }
+end

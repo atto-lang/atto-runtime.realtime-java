@@ -1,0 +1,22 @@
+// Core NATS subject model.
+// No regex or arbitrary user-controlled code execution in subject handling.
+pub fnc valid_publish_subject(String subject): bool {
+  if subject == "" then
+    return false;
+  fi
+  if subject.contains_literal(" ") then
+    return false;
+  fi
+  if subject.contains_literal("*") then
+    return false;
+  fi
+  if subject.contains_literal(">") then
+    return false;
+  fi
+  return true;
+}
+
+pub fnc direct_subject_match(String pattern, String subject): bool {
+  // Exact match fast path; wildcard token trie belongs to SubjectRouterActor.
+  return pattern == subject;
+}

@@ -1,0 +1,51 @@
+// Single actor owns WAL ordering. Disk writes are async tasks outside
+// critical methods; no broker publish is acknowledged by this scaffold.
+define actor WalWriterActor as
+  state {
+    let int accepted_operations = 0;
+    let int completed_operations = 0;
+    let int generation = 1;
+    let bool sealed = false;
+  }
+
+  critical admit_append(): bool {
+    let bool admitted = false;
+    self.handle_state(|mut s| -> {
+      if !s.sealed and s.accepted_operations == s.completed_operations then
+        s.accepted_operations = s.accepted_operations + 1;
+        admitted = true;
+      fi
+    });
+    return admitted;
+  }
+
+  critical finish_append(): bool {
+    let bool accepted = false;
+    self.handle_state(|mut s| -> {
+      if !s.sealed and s.completed_operations < s.accepted_operations then
+        s.completed_operations = s.completed_operations + 1;
+        accepted = true;
+      fi
+    });
+    return accepted;
+  }
+
+  critical seal(): void {
+    self.handle_state(|mut s| -> {
+      s.sealed = true;
+      s.generation = s.generation + 1;
+    });
+    return;
+  }
+
+  receive(ActorMail<int> mail): void {
+    if mail.value == 1 then
+      self.admit_append();
+    elif mail.value == 2 then
+      self.finish_append();
+    elif mail.value == 3 then
+      self.seal();
+    fi
+    return;
+  }
+end
