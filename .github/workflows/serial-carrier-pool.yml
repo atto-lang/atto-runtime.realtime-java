@@ -40,10 +40,15 @@ jobs:
           mkdir -p "$work/classes"
           javac -d "$work/classes" \
             src/main/java/org/attolang/runtime/SerialCarrierScheduler.java \
-            src/test/java/SerialCarrierSchedulerProbe.java
+            src/test/java/SerialCarrierSchedulerProbe.java \
+            src/test/java/SerialCarrierShutdownProbe.java
           sha256sum "$work/classes/org/attolang/runtime/SerialCarrierScheduler.class"
           for n in $(seq 1 12); do
             timeout 45 java -ea -cp "$work/classes" SerialCarrierSchedulerProbe > "$work/run-$n.log"
+            timeout 45 java -ea -cp "$work/classes" SerialCarrierShutdownProbe > "$work/shutdown-$n.log"
+            grep -Fx ATTO_RT_CONCURRENT_SHUTDOWN_WITH_IN_FLIGHT=PASS "$work/shutdown-$n.log" >/dev/null
+            grep -Fx ATTO_RT_SINGLE_CARRIER_FAIRNESS=PASS "$work/shutdown-$n.log" >/dev/null
+            grep -Fx ATTO_RT_SHUTDOWN_FAIRNESS_HOST_PROBE=PASS "$work/shutdown-$n.log" >/dev/null
             for required in \
               ATTO_RT_ADMISSION_AND_NEIGHBOR=PASS \
               ATTO_RT_ABORT_AND_SUPERVISOR_CONTROL=PASS \
