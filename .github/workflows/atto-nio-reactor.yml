@@ -1,0 +1,63 @@
+name: Bounded Atto NIO reactor host integration
+on:
+  push:
+    branches: [feat/nio-reactor-bounded-dispatch-20261115]
+  pull_request:
+    paths:
+      - 'src/main/java/**'
+      - 'src/test/java/**'
+      - '.github/workflows/atto-nio-reactor.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  loopback-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: ['21','25']
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+      - name: Compile host scheduler and real NIO socket tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ATTO_NIO_SOURCE_SHA=$(git rev-parse HEAD)"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          mkdir "$work/classes"
+          javac -d "$work/classes" \
+            src/main/java/org/attolang/runtime/SerialCarrierScheduler.java \
+            src/main/java/org/attolang/runtime/BoundedNioReactor.java \
+            src/test/java/BoundedNioReactorProbe.java \
+            src/test/java/SerialCarrierSchedulerProbe.java \
+            src/test/java/SerialCarrierShutdownProbe.java
+          for n in $(seq 1 12); do
+            timeout 45 java -ea -cp "$work/classes" BoundedNioReactorProbe > "$work/nio-$n.log"
+            for required in \
+              ATTO_NIO_BACKPRESSURE_NO_LOSS=PASS \
+              ATTO_NIO_DESCRIPTOR_GENERATION_FENCE=PASS \
+              ATTO_NIO_CONCURRENT_SHUTDOWN=PASS \
+              ATTO_NIO_LOOPBACK_HOST_PROBE=PASS \
+              ATTO_NIO_COMPILED_GUEST=NOT_EXECUTED \
+              ATTO_NIO_HARD_REALTIME=NOT_CERTIFIED; do
+              grep -Fx "$required" "$work/nio-$n.log" >/dev/null
+            done
+          done
+          timeout 60 java -ea -cp "$work/classes" SerialCarrierSchedulerProbe \
+            | grep -Fx ATTO_RT_HOST_REFERENCE_PROBE=PASS
+          timeout 60 java -ea -cp "$work/classes" SerialCarrierShutdownProbe \
+            | grep -Fx ATTO_RT_SHUTDOWN_FAIRNESS_HOST_PROBE=PASS
+          echo ATTO_NIO_LOOPBACK_12_REPETITIONS=PASS
+          echo ATTO_NIO_EVIDENCE_SCOPE=JAVA_HOST_ONLY_NOT_ATTO_GUEST
