@@ -1,0 +1,60 @@
+name: Atto serial actor multi-carrier host validation
+on:
+  push:
+    branches: [feat/serial-carrier-pool-20261115]
+  pull_request:
+    paths:
+      - 'src/main/java/**'
+      - 'src/test/java/**'
+      - '.github/workflows/serial-carrier-pool.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  serial-actor-host-probe:
+    name: Java ${{ matrix.jdk }} serial actor carrier pool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: ['21', '25']
+    steps:
+      - name: Checkout exact proposed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+      - name: Compile real Java scheduler and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ATTO_SERIAL_ACTOR_HEAD=$(git rev-parse HEAD)"
+          work="$(mktemp -d)"
+          mkdir -p "$work/classes"
+          javac -d "$work/classes" \
+            src/main/java/org/attolang/runtime/SerialCarrierScheduler.java \
+            src/test/java/SerialCarrierSchedulerProbe.java
+          sha256sum "$work/classes/org/attolang/runtime/SerialCarrierScheduler.class"
+          for n in $(seq 1 12); do
+            timeout 45 java -ea -cp "$work/classes" SerialCarrierSchedulerProbe > "$work/run-$n.log"
+            for required in \
+              ATTO_RT_ADMISSION_AND_NEIGHBOR=PASS \
+              ATTO_RT_ABORT_AND_SUPERVISOR_CONTROL=PASS \
+              ATTO_RT_CONTROL_OVERFLOW_ESCALATES=PASS \
+              ATTO_RT_SERIAL_CARRIER_POOL=PASS \
+              ATTO_RT_SHUTDOWN_DRAIN=PASS \
+              ATTO_RT_HOST_REFERENCE_PROBE=PASS \
+              ATTO_RT_COMPILED_GUEST=NOT_EXECUTED \
+              ATTO_RT_HARD_REALTIME=NOT_CERTIFIED; do
+              grep -Fx "$required" "$work/run-$n.log" >/dev/null
+            done
+          done
+          echo ATTO_RT_12_HOST_PROBE_REPEATS=PASS
+          echo ATTO_RT_EVIDENCE_SCOPE=JAVA_HOST_REFERENCE_ONLY_NOT_GUEST_OR_HARD_RT
