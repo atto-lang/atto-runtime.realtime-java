@@ -1,0 +1,14 @@
+{
+  "schema": "atto.repository-capabilities.v1",
+  "repository": "atto-lang/atto-runtime.realtime-java",
+  "role": "runtime",
+  "source_state": "implementation",
+  "feature_status": {
+    "actor_lifecycle": "not_executed",
+    "guest_execution": "not_executed",
+    "host_runtime_policy": "not_executed",
+    "hard_realtime": "not_executed"
+  },
+  "certification": "NOT_CERTIFIED",
+  "evidence": []
+}
