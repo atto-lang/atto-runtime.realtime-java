@@ -1,0 +1,267 @@
+package dev.oreslang.realtime;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+
+/**
+ * Build-time evidence produced by the Oreslang compiler/classfile verifier.
+ * This is distinct from VM/deployment qualification: both are required.
+ */
+public record CompilerArtifactEvidence(
+        String bytecodeSha256,
+        int verifiedMethods,
+        boolean sourceOwnershipChecked,
+        boolean closedWorldCalls,
+        boolean boundedControlFlow,
+        boolean classfileAudited,
+        boolean noAllocationBytecodes,
+        boolean noDynamicDispatch,
+        boolean noMonitorOperations,
+        boolean acyclicCallGraph) {
+
+    private static final String SCHEMA = "oreslang.realtime-artifact.v1";
+    private static final long MAX_MANIFEST_BYTES = 64 * 1024;
+    private static final long MAX_CLASSFILE_BYTES = 2L * 1024 * 1024;
+    private static final int MAX_CLASS_NAME_BYTES = 512;
+    private static final Set<String> MANIFEST_KEYS = Set.of(
+            "schema",
+            "class.name",
+            "bytecode.sha256",
+            "source.reachable_functions",
+            "source.frontend_type_ownership_checked",
+            "source.closed_world",
+            "source.bounded_control_flow",
+            "classfile.verified_methods",
+            "classfile.no_allocation_opcodes",
+            "classfile.no_dynamic_dispatch",
+            "classfile.no_monitor_operations",
+            "classfile.acyclic_call_graph",
+            "classfile.assurance");
+    private static final Set<String> REQUIRED_ASSURANCE = Set.of(
+            "SOURCE_AND_CLASSFILE_PRIMITIVE_SUBSET",
+            "ACYCLIC",
+            "WCET_AND_VM_QUALIFICATION_REQUIRED");
+
+    public CompilerArtifactEvidence {
+        bytecodeSha256 = Objects.requireNonNull(bytecodeSha256, "bytecodeSha256")
+                .toLowerCase(Locale.ROOT);
+        if (!bytecodeSha256.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException(
+                    "bytecodeSha256 must be 64 lowercase/uppercase hex digits");
+        }
+        if (verifiedMethods <= 0) {
+            throw new IllegalArgumentException("verifiedMethods must be positive");
+        }
+    }
+
+    public boolean complete() {
+        return sourceOwnershipChecked
+                && closedWorldCalls
+                && boundedControlFlow
+                && classfileAudited
+                && noAllocationBytecodes
+                && noDynamicDispatch
+                && noMonitorOperations
+                && acyclicCallGraph;
+    }
+
+    /**
+     * Loads compiler evidence and cryptographically binds it to the exact
+     * classfile that will be handed to the AOT toolchain.
+     *
+     * <p>The evidence file intentionally uses a canonical, restricted
+     * {@code key=value} syntax rather than the full {@link Properties} grammar.
+     * This rejects duplicate/escaped/continued keys before any security bit is
+     * consumed.</p>
+     */
+    public static CompilerArtifactEvidence loadBound(
+            Path manifestFile, Path classFile) throws IOException {
+        Objects.requireNonNull(manifestFile, "manifestFile");
+        Objects.requireNonNull(classFile, "classFile");
+
+        Properties properties = loadCanonicalManifest(manifestFile);
+        requireValue(properties, "schema", SCHEMA);
+        validateClassName(required(properties, "class.name"));
+
+        byte[] classBytes = readBounded(classFile, MAX_CLASSFILE_BYTES, "classfile");
+        String expectedSha = required(properties, "bytecode.sha256")
+                .toLowerCase(Locale.ROOT);
+        if (!expectedSha.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest bytecode.sha256 must be 64 hex digits");
+        }
+        String observedSha = sha256(classBytes);
+        if (!expectedSha.equals(observedSha)) {
+            throw new IllegalArgumentException(
+                    "RT artifact digest mismatch: manifest=" + expectedSha
+                            + " classfile=" + observedSha);
+        }
+
+        int verifiedMethods;
+        int reachableFunctions;
+        try {
+            verifiedMethods = Integer.parseInt(
+                    required(properties, "classfile.verified_methods"));
+            reachableFunctions = Integer.parseInt(
+                    required(properties, "source.reachable_functions"));
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest contains an invalid integer", invalid);
+        }
+        if (verifiedMethods <= 0 || reachableFunctions <= 0) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest method counts must be positive");
+        }
+        if (verifiedMethods != reachableFunctions) {
+            throw new IllegalArgumentException(
+                    "source/classfile method-set evidence does not match");
+        }
+
+        Set<String> assurance = parseAssurance(
+                required(properties, "classfile.assurance"));
+        if (!assurance.equals(REQUIRED_ASSURANCE)) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest classfile.assurance must contain exactly "
+                            + REQUIRED_ASSURANCE);
+        }
+
+        return new CompilerArtifactEvidence(
+                observedSha,
+                verifiedMethods,
+                requiredTrue(properties, "source.frontend_type_ownership_checked"),
+                requiredTrue(properties, "source.closed_world"),
+                requiredTrue(properties, "source.bounded_control_flow"),
+                true,
+                requiredTrue(properties, "classfile.no_allocation_opcodes"),
+                requiredTrue(properties, "classfile.no_dynamic_dispatch"),
+                requiredTrue(properties, "classfile.no_monitor_operations"),
+                requiredTrue(properties, "classfile.acyclic_call_graph"));
+    }
+
+    public static CompilerArtifactEvidence unverified(String sha256) {
+        return new CompilerArtifactEvidence(
+                sha256, 1, false, false, false, false, false, false, false, false);
+    }
+
+    private static Properties loadCanonicalManifest(Path manifestFile) throws IOException {
+        byte[] bytes = readBounded(manifestFile, MAX_MANIFEST_BYTES, "manifest");
+        String text = new String(bytes, StandardCharsets.UTF_8);
+        if (text.indexOf(0) >= 0 || text.indexOf(92) >= 0) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest forbids NULs, escapes, and continuations");
+        }
+
+        Properties properties = new Properties();
+        Set<String> seen = new HashSet<>();
+        String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            int separator = line.indexOf('=');
+            if (separator <= 0) {
+                throw new IllegalArgumentException(
+                        "RT artifact manifest line " + (i + 1) + " must use key=value");
+            }
+            String key = line.substring(0, separator).trim();
+            String value = line.substring(separator + 1).trim();
+            if (!MANIFEST_KEYS.contains(key)) {
+                throw new IllegalArgumentException(
+                        "RT artifact manifest contains unknown key " + key);
+            }
+            if (!seen.add(key)) {
+                throw new IllegalArgumentException(
+                        "RT artifact manifest contains duplicate key " + key);
+            }
+            if (value.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "RT artifact manifest key " + key + " cannot be blank");
+            }
+            properties.setProperty(key, value);
+        }
+        if (!seen.equals(MANIFEST_KEYS)) {
+            Set<String> missing = new HashSet<>(MANIFEST_KEYS);
+            missing.removeAll(seen);
+            throw new IllegalArgumentException(
+                    "RT artifact manifest is missing keys " + missing);
+        }
+        return properties;
+    }
+
+    private static byte[] readBounded(Path path, long maximum, String kind) throws IOException {
+        long size = Files.size(path);
+        if (size <= 0 || size > maximum) {
+            throw new IllegalArgumentException(
+                    "RT artifact " + kind + " size must be between 1 and " + maximum + " bytes");
+        }
+        return Files.readAllBytes(path);
+    }
+
+    private static Set<String> parseAssurance(String raw) {
+        String[] tokens = raw.split(";", -1);
+        Set<String> values = new HashSet<>();
+        for (String token : tokens) {
+            String value = token.trim();
+            if (value.isEmpty() || !values.add(value)) {
+                throw new IllegalArgumentException(
+                        "RT artifact manifest classfile.assurance is noncanonical");
+            }
+        }
+        return Set.copyOf(values);
+    }
+
+    private static void validateClassName(String value) {
+        if (value.getBytes(StandardCharsets.UTF_8).length > MAX_CLASS_NAME_BYTES
+                || !value.matches("[A-Za-z_$][A-Za-z0-9_$.]*")) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest class.name is invalid");
+        }
+    }
+
+    private static boolean requiredTrue(Properties properties, String key) {
+        String value = required(properties, key);
+        if (!"true".equals(value)) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest requires " + key + "=true");
+        }
+        return true;
+    }
+
+    private static void requireValue(
+            Properties properties, String key, String expected) {
+        String value = required(properties, key);
+        if (!expected.equals(value)) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest " + key + " must be " + expected);
+        }
+    }
+
+    private static String required(Properties properties, String key) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                    "RT artifact manifest is missing " + key);
+        }
+        return value.trim();
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+}
