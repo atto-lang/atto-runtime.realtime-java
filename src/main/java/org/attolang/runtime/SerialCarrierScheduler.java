@@ -256,7 +256,7 @@ public final class SerialCarrierScheduler implements AutoCloseable {
                 message = a.mail[a.head];
                 a.head = (a.head + 1) % mailboxCapacity;
                 --a.queued;
-                long workerId = Thread.currentThread().threadId();
+                long workerId = Thread.currentThread().getId();
                 if (a.lastCarrierThread != 0 && a.lastCarrierThread != workerId) a.migrated = true;
                 a.lastCarrierThread = workerId;
                 oldState = a.state;

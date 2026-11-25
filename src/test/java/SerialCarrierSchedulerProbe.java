@@ -198,7 +198,7 @@ public final class SerialCarrierSchedulerProbe {
                     snap.inFlight() == 0 && maxActive.get() == 1,
                     "serial lease violated or actor lost admitted turns");
             check(scheduler.carrier_count() == 4 && snap.lastCarrierThread() !=
-                    Thread.currentThread().threadId(), "incorrect carrier topology");
+                    Thread.currentThread().getId(), "incorrect carrier topology");
             // Migration is permitted between turns, but not required in each test.
             System.out.println("ATTO_RT_ACTOR_MIGRATION_OBSERVED=" + snap.migrated());
             scheduler.close();
