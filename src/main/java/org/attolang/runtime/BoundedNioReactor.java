@@ -258,10 +258,16 @@ public final class BoundedNioReactor implements AutoCloseable {
         try { count = s.channel.read(s.pending); }
         catch (IOException | RuntimeException failure) { retire(slot, s); return; }
         if (count < 0) { retire(slot, s); return; }
-        if (count == 0) return;
+        // A zero-byte nonblocking read must leave an empty read-mode buffer.
+        // Otherwise the next readiness event could deliver unwritten bytes.
+        if (!finishRead(s.pending, count)) return;
         readEvents.incrementAndGet();
-        s.pending.flip();
         flushPending(slot, s);
+    }
+
+    static boolean finishRead(ByteBuffer pending, int count) {
+        pending.flip();
+        return count > 0;
     }
 
     private void scanPaused() {
