@@ -1,6 +1,51 @@
-# Oreslang real-time Java runtime (incubating)
+> **AI agent instructions (organization-wide):** Before working on code, issues, or pull requests, read and follow the [organization `AGENTS.md`](https://github.com/atto-lang/.github/blob/main/AGENTS.md), including its **merge-first stealth-development policy**. Honor any repository-local `AGENTS.md`, explicit holds, and GitHub-enforced rules.
 
-This repository houses the **JVM-specific real-time qualification layer** for Oreslang. It is **not** a replacement for `oreslang-source.java` or `oreslang-source.llvm`. Core ownership, effects, resource budgets, and the backend-neutral real-time contract belong in the shared Oreslang language/compiler contracts; this runtime adapts those contracts to particular JVMs and target systems.
+# atto-runtime.realtime-java
+
+Low-latency Java runtime research for AttoLang actors, scheduling, and memory management.
+
+## Naming migration and language authority
+
+This repository is maintained at [atto-lang/atto-runtime.realtime-java](https://github.com/atto-lang/atto-runtime.realtime-java); use `https://github.com/atto-lang/atto-runtime.realtime-java.git` for Git remotes and canonical `.atto` source examples. The normative language contract is [atto-spec](https://github.com/atto-lang/atto-spec), with executable guest evidence tracked by [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance). Follow current ownership, borrowing, effects, actor, and syntax rules there; do not infer implemented features from a README or unexecuted CI.
+
+## Scope
+
+This repository is the AttoLang ecosystem home for:
+
+- Latency-oriented actor scheduling, memory/arena strategies, and reproducible real-time benchmarks.
+- Compatibility with the [canonical language specification](https://github.com/atto-lang/atto-spec) where applicable.
+- Evidence-based tests, benchmark results, and cross-backend conformance reporting.
+
+## Architecture and compatibility
+
+AttoLang is designed around actors, explicit ownership, and portable concurrency semantics. Backend-specific optimizations must not silently change the shared language contract. Runtime capabilities, target restrictions, and unsupported features should be documented explicitly.
+
+## Building and testing
+
+Consult the checked-in source tree and CI workflows for verified commands and supported targets. Add target-specific build instructions and exact-head execution results as they become available; do not treat a passing host-unit test as proof of guest-language conformance.
+
+## Project status
+
+This README describes the repository's intended responsibilities. Feature support and release readiness must be established from implementation, tests, and CI evidence rather than this description alone.
+
+## Related repositories
+
+- [AttoLang organization](https://github.com/atto-lang)
+- [Language specification](https://github.com/atto-lang/atto-spec)
+- [Platform conformance](https://github.com/atto-lang/atto-platform-conformance)
+- [Commercial infrastructure](https://github.com/atto-co)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** Latency-optimized Java actor scheduler, deterministic queues, native/offheap arena research and benchmark characterization.
+
+**Belongs elsewhere:** Full Java compiler frontend and GraalVM AOT implementation live in atto-source.java; common actor semantics in atto-spec.
+
+**Security and portability boundary:** State explicitly which results are host-only benchmarks versus compiled AttoLang guest execution; constrain pause times, starvation, admission and actor isolation.
+
+AttoLang is the canonical project name; new source, examples and documentation use `.atto` and the `atto-lang` repository organization. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
 
 ## Current portable admission layer
 
@@ -40,18 +85,18 @@ A qualified critical domain must establish all of these properties together:
 
 ## RTSJ and vendor runtimes
 
-RTSJ 2 moved scoped-memory APIs into `javax.realtime.memory` and deprecated legacy APIs including `NoHeapRealtimeThread`. Oreslang therefore does not use presence of that deprecated class as the definition of real-time safety.
+RTSJ 2 moved scoped-memory APIs into `javax.realtime.memory` and deprecated legacy APIs including `NoHeapRealtimeThread`. AttoLang therefore does not use presence of that deprecated class as the definition of real-time safety.
 
 Different qualified runtimes may establish collector independence differently. A runtime may use scoped/no-heap execution, or it may provide bounded collector interference/preemption latency that is included in timing qualification.
 
 The adapter layer separates four evidence classes:
 
 1. `RtsjPresence`: reflective API discovery only.
-2. `CompilerArtifactEvidence`: proof about the exact Oreslang artifact.
+2. `CompilerArtifactEvidence`: proof about the exact AttoLang artifact.
 3. `VmQualification`: VM, memory, scheduler, AOT, and deployment guarantees.
 4. `HardRealtimeAdmission`: fail-closed composition of all evidence plus the response-time budget.
 
-`RealtimeVmAdapter` is the vendor SPI and providers are discovered with `ServiceLoader`. There is deliberately no generic JVM hard-RT provider: no qualified adapter means no Oreslang hard-RT qualification.
+`RealtimeVmAdapter` is the vendor SPI and providers are discovered with `ServiceLoader`. There is deliberately no generic JVM hard-RT provider: no qualified adapter means no AttoLang hard-RT qualification.
 
 ## Compiler artifact evidence
 
@@ -61,7 +106,7 @@ Deployment must bind the loaded/AOT-compiled artifact back to the same digest be
 
 ## Actor arenas and GC
 
-Per-actor arenas are central to Oreslang, but backing storage matters. An ordinary Java object graph remains JVM-managed even when Oreslang logically calls it an actor arena. Direct `ByteBuffer` can move payload bytes off heap, but wrappers and cleaners remain managed. Those approaches can reduce GC pressure but do not prove zero-GC critical execution.
+Per-actor arenas are central to AttoLang, but backing storage matters. An ordinary Java object graph remains JVM-managed even when AttoLang logically calls it an actor arena. Direct `ByteBuffer` can move payload bytes off heap, but wrappers and cleaners remain managed. Those approaches can reduce GC pressure but do not prove zero-GC critical execution.
 
 The hard-RT Java target therefore requires either:
 
@@ -72,10 +117,10 @@ The general Java/GraalVM runtime may continue to use managed objects outside the
 
 ## AOT terminology
 
-Oreslang distinguishes:
+AttoLang distinguishes:
 
 - **host AOT**: the Java host/runtime was compiled ahead of time;
-- **guest AOT**: Oreslang guest code was compiled ahead of time;
+- **guest AOT**: AttoLang guest code was compiled ahead of time;
 - **strict full guest AOT**: every reachable critical guest function executes without an interpreter, runtime JIT, or runtime code generation.
 
 Only strict full guest AOT satisfies the hard-RT compilation requirement.
@@ -90,15 +135,10 @@ Only strict full guest AOT satisfies the hard-RT compilation requirement.
 
 Hard-RT admission is target-bound to a VM build, AOT toolchain, RTOS/OS, CPU, scheduling configuration, and certified library set. No proprietary SDK, license, CI credential, or source mirroring is required by the portable tests. Production qualification additionally requires backend inspection, transitive effects and memory-region proof, platform-specific WCET/response-time analysis, and on-target stress validation.
 
-The canonical backend-neutral contract lives in `oreslang-common-source/contracts/v1/realtime-execution.v1.schema.json`.
+The canonical backend-neutral contract lives in `atto-common-source/contracts/v1/realtime-execution.v1.schema.json`.
 
-## Repository ownership and migration (2026-11-08)
+## Guarded migration and ownership
 
-**AttoLang** is the public language name; the current repository is still `ores-truffle-oreslang/oreslang-runtime.realtime-java` (legacy namespace). Preserve existing `oreslang-*` identifiers, old commands and `.ores` compatibility until migration and feature support are independently verified.
+The current canonical repository is `atto-lang/atto-runtime.realtime-java`. Its legacy counterpart is archived; do not infer a numeric-ID-preserving transfer or authorize any new transfer. Preserve existing Maven coordinates, Java package names and historical receipts until a separately reviewed compatibility migration. Portable core/std implementations belong in the compiler-owned libraries; commercial hosted services belong under separately governed ownership.
 
-- **Belongs here:** Java real-time runtime integration, scheduler/host primitives and timing validation.
-- **Does not belong here:** portable core/std algorithms duplicated as Java-only code or hosted commercial service.
-- **Ownership:** [`atto-lang`](https://github.com/atto-lang) owns language, compiler, tooling, portable core/std, conformance and developer ecosystem; [`atto-co`](https://github.com/atto-co) owns separately governed hosted runtime, deployment, identity, billing and cloud operations. An existing similarly named `atto-*` repo does not automatically contain this repo's code or retain its numeric identity.
-- **Proposed first destination:** `atto-lang/oreslang-runtime.realtime-java` via an approved *GitHub repository transfer* preserving numeric ID/history/name. The existing plan authorizes **no** direct legacy-org transfer to `atto-co`; future product spinouts need their own approval.
-
-**Cutover instructions:** coordinate in [migration issue #26](https://github.com/ores-truffle-oreslang/.github/issues/26) and consult the private [runbook draft #25](https://github.com/ores-truffle-oreslang/.github/pull/25). Require named source/target admins and independent security reviewer, exact head SHA/tree, target protection/rulesets, permissions, Actions and actual executed steps, secrets, releases, Pages, packages, apps, webhooks, open PRs, consumers and rollback owner before any transfer; never mirror private code without separate authorization. Verify unchanged GitHub ID/tree and control parity afterward, update clients separately, and execute exact-head tests. Zero-step Actions are `NOT_EXECUTED`; host-only checks are not compiled-guest evidence. No forced language/CLI rename or production capability claims.
+Any future transfer must have named source/target administrators, independent security approval, exact source commit and tree, access/rulesets, Actions, secrets, releases, apps, webhooks, consumers and rollback reviewed. Never mirror private source without separate authorization. Verify identity and control parity before cutover; zero-step Actions are NOT_EXECUTED. This documentation authorizes no transfer.
