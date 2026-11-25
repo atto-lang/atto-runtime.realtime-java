@@ -94,6 +94,14 @@ final class TaskTimerAdmissionTest {
         assertTrue(failures.stream().anyMatch(s -> s.contains("cancellation cleanup")));
     }
 
+    @Test void higherPriorityInterferenceCannotBeOmittedFromStartBudget() {
+        var budget = new TaskTimerAdmission.Budget(1000, 900, 100,
+                10, 20, 20, 10, 100, 41, 50, 900);
+        assertFalse(budget.withinStartDeadline());
+        assertTrue(budget.withinCompletionDeadline());
+        assertFalse(check(qualified(), evidence(), budget).admitted());
+    }
+
     @Test void overflowDoesNotWrapIntoAnAdmittedTimingBudget() {
         var overflow = new TaskTimerAdmission.Budget(
                 Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,

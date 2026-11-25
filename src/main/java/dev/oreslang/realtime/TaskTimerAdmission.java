@@ -70,7 +70,7 @@ public final class TaskTimerAdmission {
 
         public boolean withinStartDeadline() {
             return sumWithin(startDeadlineNanos, releaseJitterNanos, wakeQueueNanos,
-                    nonPreemptibleBlockingNanos, claimToInstructionNanos);
+                    nonPreemptibleBlockingNanos, claimToInstructionNanos, higherPriorityInterferenceNanos);
         }
 
         public boolean withinCompletionDeadline() {

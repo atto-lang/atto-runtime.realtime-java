@@ -1,4 +1,4 @@
-# AttoLang Task timers — hard-real-time admission (draft)
+# AttoLang Task timers — hard-real-time admission (portable policy preflight)
 
 **Status:** Portable policy-only preflight. No vendor-qualified deployment, native clock driver, guest-to-timer lowering, complete Task integration, on-target WCET proof, or hard-RT certification is established by this change.
 
@@ -7,7 +7,7 @@
 - A **timer** is an owner-/generation-fenced registration and bounded clock wake. Its expiry is a readiness signal; it is not guest execution.
 - A **Future** exposes completion. `await time.sleep(d)` / `await time.after(d)` resumes the **calling Task's existing continuation**, never creates an extra Task or blocks a carrier.
 - A **Task** is separately scheduled work with a structured parent scope. It owns any timer registrations created inside its lifetime. Task cancellation requests timer withdrawal and cleanup; logical cancellation is **not** proof of physical quiescence.
-- An **Actor** keeps a serialized logical turn during an awaited timer. A clock thread cannot execute a guest callback or bypass actor CONTROL. Actor teardown and hot reload revoke stale timer tokens by id/incarnation and await physical retirement.
+- A **serial Actor** keeps a serialized logical turn during an awaited timer; ordinary reentrant actors follow their configured receive-concurrency bound. A clock thread cannot execute a guest callback or bypass actor CONTROL. Actor teardown and hot reload revoke stale timer tokens by id/incarnation and await physical retirement.
 
 Ordinary Task timers are useful for timeouts, backoff, retry, and async sleeping. `time.timeout(duration, sharedFuture)` is an **observer** and must not cancel a producer it doesn't own; a separately defined *owned-child deadline* may cancel children, then wait for their cleanup and retirement before reporting scope drain. Deadline inheritance is minimum(parent, scope, task, actor, tenant) under the same monotonic clock domain.
 
@@ -24,7 +24,7 @@ Required timer system properties:
 5. Periodic hard-RT releases require **absolute phase** (t0 + n × period), admission/backlog policy and overrun/miss handling. A demand-driven `interval.next()` or `sleep(period)` loop is not equivalent.
 6. Unqualified blocking FFI, heap allocation, hidden GC, JIT, lazy worker creation, priority-inverting mutexes, unbounded `defer`/finally cleanup and arbitrary external I/O are **inadmissible** on the hard-RT critical path. Compiler-injected cooperation helps soft scheduling but is not a substitute for proven bounded preemption/WCET.
 
-`TaskTimerAdmission.Budget` checks explicit upper bounds with overflow-safe arithmetic. Its start budget is release jitter + wake queue + nonpreemptible blocking + claim-to-instruction. Its completion budget adds guest WCET and higher-priority interference. Its cancellation budget instead adds worst-case cleanup and interference. A product may need tighter timing models (including nested tasks and resources) before on-target admission; a synthetic passing unit test does **not** qualify an actual device.
+`TaskTimerAdmission.Budget` checks explicit upper bounds with overflow-safe arithmetic. Its start budget is release jitter + wake queue + nonpreemptible blocking + claim-to-instruction + higher-priority interference (conservatively charged in full). Its completion budget adds guest WCET. Its cancellation budget instead adds worst-case cleanup. A product may need tighter timing models (including nested tasks and resources) before on-target admission; a synthetic passing unit test does **not** qualify an actual device.
 
 ## Backend boundaries and verification
 
